@@ -24,6 +24,8 @@ public:
 #else
   typedef void(*callback_t)(const MQTT::Publish&);
 #endif
+  
+  uint8_t connackResult;
 
 private:
    IPAddress server_ip;

@@ -83,28 +83,28 @@ void PubSubClient::_process_message(MQTT::Message* msg) {
   switch (msg->type()) {
   case MQTT::PUBLISH:
     {
-      MQTT::Publish *pub = static_cast<MQTT::Publish*>(msg);	// RTTI is disabled on embedded, so no dynamic_cast<>()
+      MQTT::Publish *pub = static_cast<MQTT::Publish*>(msg);  // RTTI is disabled on embedded, so no dynamic_cast<>()
 
       if (_callback)
-	_callback(*pub);
+  _callback(*pub);
 
       if (pub->qos() == 1) {
-	MQTT::PublishAck puback(pub->packet_id());
-	_send_message(puback);
+  MQTT::PublishAck puback(pub->packet_id());
+  _send_message(puback);
 
       } else if (pub->qos() == 2) {
-	uint8_t retries = 0;
+  uint8_t retries = 0;
 
-	{
-	  MQTT::PublishRec pubrec(pub->packet_id());
-	  if (!_send_message(pubrec, true))
-	    return;
-	}
+  {
+    MQTT::PublishRec pubrec(pub->packet_id());
+    if (!_send_message(pubrec, true))
+      return;
+  }
 
-	{
-	  MQTT::PublishComp pubcomp(pub->packet_id());
-	  _send_message(pubcomp);
-	}
+  {
+    MQTT::PublishComp pubcomp(pub->packet_id());
+    _send_message(pubcomp);
+  }
       }
     }
     break;
@@ -118,6 +118,13 @@ void PubSubClient::_process_message(MQTT::Message* msg) {
 
   case MQTT::PINGRESP:
     pingOutstanding = false;
+    break;
+
+  case MQTT::CONNACK:
+    MQTT::ConnectAck *connack = static_cast<MQTT::ConnectAck*>(msg);
+    connackResult = connack->_rc;
+    break;
+
   }
 }
 
@@ -131,13 +138,17 @@ bool PubSubClient::_wait_for(MQTT::message_type match_type, uint16_t match_pid) 
   while (millis() < lastInActivity + (keepalive * 1000)) {
     // Read the packet and check it
     MQTT::Message *msg = _recv_message();
-    if (msg != NULL) {
-      if (msg->type() == match_type) {
-		uint16_t pid = msg->packet_id();
-		delete msg;
-		if (match_pid)
-			return pid == match_pid;
-		return true;
+    if (msg != NULL)
+    {
+      if (msg->type() == match_type)
+      {
+        if(msg->type() == MQTT::CONNACK)
+          _process_message(msg);
+        uint16_t pid = msg->packet_id();
+        delete msg;
+        if (match_pid)
+          return pid == match_pid;
+        return true;
       }
 
       _process_message(msg);
@@ -166,6 +177,7 @@ bool PubSubClient::connect(MQTT::Connect &conn) {
     return false;
 
   int result = 0;
+  connackResult = 255;
 
   if (server_hostname.length() > 0)
     result = _client->connect(server_hostname.c_str(), server_port);
@@ -178,11 +190,16 @@ bool PubSubClient::connect(MQTT::Connect &conn) {
   }
 
   pingOutstanding = false;
-  nextMsgId = 1;		// Init the next packet id
-  lastInActivity = millis();	// Init this so that _wait_for() doesn't think we've already timed-out
-  keepalive = conn.keepalive();	// Store the keepalive period from this connection
+  nextMsgId = 1;    // Init the next packet id
+  lastInActivity = millis();  // Init this so that _wait_for() doesn't think we've already timed-out
+  keepalive = conn.keepalive(); // Store the keepalive period from this connection
 
   if (!_send_message(conn, true)) {
+    _client->stop();
+    return false;
+  }
+
+  if(connackResult != 0) {
     _client->stop();
     return false;
   }
@@ -202,7 +219,7 @@ bool PubSubClient::loop() {
     } else {
       MQTT::Ping ping;
       if (!_send_message(ping))
-	return false;
+  return false;
 
       lastInActivity = lastOutActivity;
       pingOutstanding = true;
@@ -268,7 +285,7 @@ bool PubSubClient::publish(MQTT::Publish &pub) {
   case 2:
     {
       if (!_send_message(pub, true))
-	return false;
+  return false;
 
       MQTT::PublishRel pubrel(pub.packet_id());
       return _send_message(pubrel, true);

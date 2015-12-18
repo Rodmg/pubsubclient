@@ -206,9 +206,10 @@ namespace MQTT {
 
   //! Response to Connect
   class ConnectAck : public Message {
+  public:
+    uint8_t _rc;
   private:
     bool _session_present;
-    uint8_t _rc;
 
     //! Private constructor from a network buffer
     ConnectAck(uint8_t* data, uint32_t length);
